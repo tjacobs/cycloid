@@ -16,17 +16,17 @@ def DiracDelta(x, v=1):
 
 def initial_state():
     x = np.float32(
-        [0.0, 0.0, 0.0, 0.0, 0.0, 1.70000004768372, 0.300000011920929, -2.70000004768372, -2.29999995231628, -1.60000002384186, 0.200000002980232, 4.00000000000000, -35.0000000000000, 125.000000000000, 0.0]
+        [0.0, 0.0, 0.0, 0.0, 0.0, 2.70000004768372, 1.04999995231628, 2.00000000000000, -0.649999976158142, -1.39999997615814, 0.200000002980232, 3.79999995231628, -35.0000000000000, 125.000000000000, 0.0]
     )
     P = np.diag(
-        [1.00000011116208e-6, 0.0100000007078052, 4.00000000000000, 1.00000000000000, 0.160000011324883, 16.0000000000000, 16.0000000000000, 16.0000000000000, 16.0000000000000, 0.250000000000000, 0.250000000000000, 0.250000000000000, 10000.0000000000, 10000.0000000000, 1.00000000000000]
+        [1.00000011116208e-6, 0.0100000007078052, 4.00000000000000, 1.00000000000000, 0.160000011324883, 0.0400000028312206, 0.0400000028312206, 16.0000000000000, 0.250000000000000, 0.250000000000000, 0.250000000000000, 0.250000000000000, 10000.0000000000, 10000.0000000000, 1.00000000000000]
     )
 
     return x, P
 
 
 def predict(x, P, Delta_t, u_M, u_delta):
-    (v, delta, y_e, psi_e, kappa, ml_1, ml_2, ml_3, ml_4, srv_a, srv_b, srv_r, srvfb_a, srvfb_b, o_g) = x
+    (v, delta, y_error, psi_error, kappa, ml_1, ml_2, ml_3, ml_4, srv_a, srv_b, srv_r, srvfb_a, srvfb_b, o_g) = x
 
     tmp0 = exp(ml_4)
     tmp1 = Abs(u_M)
@@ -48,22 +48,21 @@ def predict(x, P, Delta_t, u_M, u_delta):
     tmp17 = Min(tmp15, tmp16)
     tmp18 = sign(tmp14)
     tmp19 = 2*tmp17*DiracDelta(tmp14) + tmp18**2*Heaviside(tmp15 - tmp16)
-    tmp20 = sin(psi_e)
+    tmp20 = sin(psi_error)
     tmp21 = Delta_t*(tmp13/2 + tmp9/2 - 1)
-    tmp22 = cos(psi_e)
+    tmp22 = cos(psi_error)
     tmp23 = Max(tmp10, tmp6)
     tmp24 = Delta_t*(tmp23/2 + v)
     tmp25 = tmp22*tmp24
     tmp26 = Delta_t**2
     tmp27 = tmp11*tmp20*tmp26/2
-    tmp28 = kappa*y_e
+    tmp28 = kappa*y_error
     tmp29 = tmp28 - 1
     tmp30 = 1/tmp29
     tmp31 = kappa*tmp30
     tmp32 = delta + tmp22*tmp31
     tmp33 = tmp20*tmp24
     tmp34 = tmp11*tmp26*tmp32/2
-    tmp35 = 0.2*v + 1.0e-5
 
     F = np.eye(15)
     F[0, 0] += -tmp13 - tmp9
@@ -90,7 +89,7 @@ def predict(x, P, Delta_t, u_M, u_delta):
     F[3, 6] += tmp3*tmp34
     F[3, 7] += tmp34*tmp8
     F[3, 8] += tmp0*tmp34
-    Q = np.float32([ 4, 0.490000000000000, pow(tmp35, 2), pow(tmp35, 2), pow(tmp35, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    Q = np.float32([ 4, 0.490000000000000, pow(0.1*v + 0.001, 2), pow(0.15*v + 0.001, 2), pow(0.75*v + 0.001, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.00000000000000e-6])
     x[0] += tmp23
     x[1] += tmp17*tmp18
     x[2] += -tmp33
@@ -101,7 +100,7 @@ def predict(x, P, Delta_t, u_M, u_delta):
 
 
 def step(x, u, Delta_t):
-    (v, delta, y_e, psi_e, kappa, ml_1, ml_2, ml_3, ml_4, srv_a, srv_b, srv_r, srvfb_a, srvfb_b, o_g) = x
+    (v, delta, y_error, psi_error, kappa, ml_1, ml_2, ml_3, ml_4, srv_a, srv_b, srv_r, srvfb_a, srvfb_b, o_g) = x
     (u_M, u_delta) = u
 
     tmp0 = -v
@@ -124,11 +123,11 @@ def step(x, u, Delta_t):
     tmp17 = Delta_t*srv_r
     tmp18 = Abs(tmp15)
     tmp19 = Min(tmp17, tmp18)
-    tmp20 = sin(psi_e)
+    tmp20 = sin(psi_error)
     tmp21 = Delta_t*(tmp14/2 + v)
     tmp22 = tmp20*tmp21
-    tmp23 = cos(psi_e)
-    tmp24 = kappa*y_e
+    tmp23 = cos(psi_error)
+    tmp24 = kappa*y_error
     tmp25 = tmp24 - 1
     tmp26 = 1/tmp25
     tmp27 = kappa*tmp26
@@ -185,8 +184,8 @@ def step(x, u, Delta_t):
 
 
 def update_centerline(x, P, a, b, c, y_c, Rk):
-    y_e = x[2]
-    psi_e = x[3]
+    y_error = x[2]
+    psi_error = x[3]
     kappa = x[4]
     tmp0 = a*y_c
     tmp1 = b + 2*tmp0
@@ -202,7 +201,7 @@ def update_centerline(x, P, a, b, c, y_c, Rk):
     tmp11 = 12.0*tmp1*tmp10
 
     yk = np.float32(
-        [-tmp3*tmp4 - y_e, -psi_e + atan(tmp1), a*tmp5 - kappa])
+        [-tmp3*tmp4 - y_error, -psi_error + atan(tmp1), a*tmp5 - kappa])
 
     Hk = np.float32([
         [0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],

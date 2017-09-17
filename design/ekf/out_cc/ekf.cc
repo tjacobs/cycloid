@@ -28,13 +28,13 @@ void EKF::Reset() {
         0.0,
         0.0,
         0.0,
-        1.70000004768372,
-        0.300000011920929,
-        -2.70000004768372,
-        -2.29999995231628,
-        -1.60000002384186,
+        2.70000004768372,
+        1.04999995231628,
+        2.00000000000000,
+        -0.649999976158142,
+        -1.39999997615814,
         0.200000002980232,
-        4.00000000000000,
+        3.79999995231628,
         -35.0000000000000,
         125.000000000000,
         0.0;
@@ -44,10 +44,10 @@ void EKF::Reset() {
     4.00000000000000,
     1.00000000000000,
     0.160000011324883,
+    0.0400000028312206,
+    0.0400000028312206,
     16.0000000000000,
-    16.0000000000000,
-    16.0000000000000,
-    16.0000000000000,
+    0.250000000000000,
     0.250000000000000,
     0.250000000000000,
     0.250000000000000,
@@ -59,8 +59,8 @@ void EKF::Reset() {
 void EKF::Predict(float Delta_t, float u_M, float u_delta) {
   float v = x_[0];
   float delta = x_[1];
-  float y_e = x_[2];
-  float psi_e = x_[3];
+  float y_error = x_[2];
+  float psi_error = x_[3];
   float kappa = x_[4];
   float ml_1 = x_[5];
   float ml_2 = x_[6];
@@ -90,22 +90,21 @@ void EKF::Predict(float Delta_t, float u_M, float u_delta) {
   float tmp17 = Min(tmp15, tmp16);
   float tmp18 = (((tmp14) > 0) - ((tmp14) < 0));
   float tmp19 = 2*tmp17*DiracDelta(tmp14) + pow(tmp18, 2)*Heaviside(tmp15 - tmp16);
-  float tmp20 = sin(psi_e);
+  float tmp20 = sin(psi_error);
   float tmp21 = Delta_t*((1.0L/2.0L)*tmp13 + (1.0L/2.0L)*tmp9 - 1);
-  float tmp22 = cos(psi_e);
+  float tmp22 = cos(psi_error);
   float tmp23 = Max(tmp10, tmp6);
   float tmp24 = Delta_t*((1.0L/2.0L)*tmp23 + v);
   float tmp25 = tmp22*tmp24;
   float tmp26 = pow(Delta_t, 2);
   float tmp27 = (1.0L/2.0L)*tmp11*tmp20*tmp26;
-  float tmp28 = kappa*y_e;
+  float tmp28 = kappa*y_error;
   float tmp29 = tmp28 - 1;
   float tmp30 = 1.0/tmp29;
   float tmp31 = kappa*tmp30;
   float tmp32 = delta + tmp22*tmp31;
   float tmp33 = tmp20*tmp24;
   float tmp34 = (1.0L/2.0L)*tmp11*tmp26*tmp32;
-  float tmp35 = 0.2*v + 1.0e-5;
 
   MatrixXf F(15, 15);
   F.setIdentity();
@@ -135,7 +134,7 @@ void EKF::Predict(float Delta_t, float u_M, float u_delta) {
   F(3, 8) += tmp0*tmp34;
 
   VectorXf Q(15);
-  Q << 4, 0.490000000000000, pow(tmp35, 2), pow(tmp35, 2), pow(tmp35, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0;
+  Q << 4, 0.490000000000000, pow(0.1*v + 0.001, 2), pow(0.15*v + 0.001, 2), pow(0.75*v + 0.001, 2), 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.00000000000000e-6;
   x_[0] += tmp23;
   x_[1] += tmp17*tmp18;
   x_[2] += -tmp33;
@@ -146,8 +145,8 @@ void EKF::Predict(float Delta_t, float u_M, float u_delta) {
 }
 
 bool EKF::UpdateCenterline(float a, float b, float c, float y_c, Eigen::MatrixXf Rk) {
-  float y_e = x_[2];
-  float psi_e = x_[3];
+  float y_error = x_[2];
+  float psi_error = x_[3];
   float kappa = x_[4];
   float tmp0 = a*y_c;
   float tmp1 = b + 2*tmp0;
@@ -164,8 +163,8 @@ bool EKF::UpdateCenterline(float a, float b, float c, float y_c, Eigen::MatrixXf
 
 
   VectorXf yk(3);
-  yk << -tmp3*tmp4 - y_e,
-        -psi_e + atan(tmp1),
+  yk << -tmp3*tmp4 - y_error,
+        -psi_error + atan(tmp1),
         a*tmp5 - kappa;
 
   MatrixXf Hk(3, 15);
