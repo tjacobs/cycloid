@@ -10,7 +10,7 @@ sp.init_printing()
  delta,      # steering curvature (1/m) - inverse turning radius
  y_error,    # lateral distance from centerline; + means car is right of line
  psi_error,  # car's angle w.r.t. centerline; + means car is facing counterclockwise from line
- kappa       # line curvature (1/m)
+ kappa       # kappa is the centreline line curvature (1/m)
  ) = sp.symbols("v, delta, y_error, psi_error, kappa", real=True)
 
 (ml_1, ml_2, ml_3,     # log of brushless motor model constants
@@ -95,7 +95,7 @@ ekfgen.open("out_cc", "out_py", sp.Matrix(x0), sp.Matrix(P0))
 # The ESC takes a positive or negative u_M control input which is transformed
 # to u_DC and u_V here first.
 
-# since k1, k2, k3, and k4 are scale constants, we keep them as logarithms in
+# Since k1, k2, k3, and k4 are scale constants, we keep them as logarithms in
 # the model. That way they can never go negative, and we avoid huge derivatives
 # when the relative scales are very different. This can, however, blow up to
 # huge values if we're not carefully managing measurement and process noise.
@@ -145,11 +145,11 @@ f = sp.Matrix([
     o_g
 ])
 
-print "state transition: x +="
+# Print
+print "State transition function: x +="
 sp.pprint(f - X)
 
-# Our prediction error AKA process noise is kinda seat of the pants, but tuned
-# on real runs by maximizing the subsequent measurement likelihood:
+# Q Process noise needs tuning.
 Q = sp.Matrix([
     # v, delta, y_error, psi_error, kappa
     2, 0.7, 0.1*v + 1e-3, 0.15*v + 1e-3, 0.75*v + 1e-3,
@@ -159,108 +159,82 @@ Q = sp.Matrix([
     0, 0, 0,
     # srvfb_a, srvfb_b
     0, 0,
-    # o_g
+    # o_g gyro
     1e-3])
 
-# Generate the prediction code:
+# Generate the prediction code. Motor speed and steering are inputs, along with f, process noise, and delta_t time.
 ekfgen.generate_predict(f, sp.Matrix([u_M, u_delta]), Q, Delta_t)
 
-
-# Now define the measurement models:
-
+# Now define the measurement models.
 # First we measure the road centerline's position, angle, and curvature with
 # our camera / image processing pipeline. The result of that is a quadratic
 # regression equation ax^2 + bx + c, and a quadratic fit covariance Rk also
 # comes from our image processing pipeline.
-
 def centerline_derivation():
+
+    # Make the symbols
     a, b, c, yc, t = sp.symbols("a b c y_c t", real=True)
+
+    # Z is the processed from camera measurement
     z_k = sp.Matrix([a, b, c, yc])
 
-    # y_c is the center of the original datapoints, where our regression should
-    # have the least amount of error. we will measure the centerline curvature
-    # (kappa) and angle (psi_e) at this point, and then compute y_error as our
-    # perpendicular distance to that line.
+    # And yc is the center of the original datapoints, where our regression should
+    # have the least amount of error. We will measure the centerline curvature
+    # (kappa) and angle (psi_error) at this point, and then compute y_error as our
+    # perpendicular distance to that line. Simples.
+    # 
+    #              /
+    # psi_error   /
+    # & kappa -> |___|  <- y_error
+    # at    yc   |
+    #             \
+    #              \
 
-    # the regression line is x = a y^2 + b y + c
+    # The regression line is x = a*y^2 + b*y^1 + c
     xc = a*yc**2 + b*yc + c
     dx = sp.diff(xc, yc)
     dxx = sp.diff(dx, yc)
-    kappa_est = dxx / ((dx**2 + 1)**(1.5))  # curvature at yc
+    kappa_est = dxx / ((dx**2 + 1)**(1.5))  # Curvature at yc
 
-    pc = sp.Matrix([xc, yc])  # regression center on curve
-    N = sp.Matrix([-1, dx])  # N is a vector normal to the curve
+    pc = sp.Matrix([xc, yc])       # regression center on curve
+    N = sp.Matrix([-1, dx])        # N is a vector normal to the curve
     Nnorm = sp.sqrt((N.T * N)[0])  # length of normal
 
-    # if curvature is low, assume we have a straight line; project our
+    # If curvature is low, assume we have a straight line; project our
     # regression centerpoint onto the unit normal vector to determine distance
     # to centerline, and tan(psi_e) = dx/dy = dx/1
     ye_linear_est = (N.T * pc)[0] / Nnorm
     tanpsi_linear_est = dx
 
-    # if curvature is nonzero, we're tracing a circle:
-    # find the center of curvature by projecting 1/kappa meters along the unit
-    # normal
-
-    # curve_center = sp.simplify(pc + N / kappa_est)
-    # print 'curve_center', curve_center
-    # and then find the closest point on the circle to the car's CG (the
-    # origin) by projecting back
-    # curve_normal = sp.simplify(-curve_center /
-    #                            sp.sqrt((curve_center.T * curve_center)[0]))
-    # curve_refpoint = curve_center + curve_normal / kappa_est
-    # ye_circular_est = (curve_refpoint.T * curve_normal)[0]
-    # tanpsi_circular_est = sp.simplify(curve_center[0] / curve_center[1])
-
-    # this is a (maybe bad) approximation, as the center point isn't
-    # necessarily the correct point on the circular curve our model assumes,
-    # but the math for circular curves isn't numerically stable when curvature
-    # is close to zero. I'm hoping this works well enough as an approximation.
-
     h_x = sp.Matrix([y_error, psi_error, kappa])
     h_z = sp.Matrix([
         ye_linear_est,
         sp.atan(tanpsi_linear_est),
-        # ye_circular_est,
-        # sp.Piecewise((ye_linear_est, sp.Abs(kappa_est) < 1e-2),
-        #             (ye_circular_est, True)),
-        # tanpsi_circular_est,
-        # sp.Piecewise((tanpsi_linear_est, sp.Abs(kappa_est) < 1e-2),
-        #             (tanpsi_circular_est, True)),
         kappa_est
     ])
 
     return h_x, h_z, z_k
 
+# Centreline
 h_x_centerline, h_z_centerline, z_k_centerline = centerline_derivation()
+ekfgen.generate_measurement( "centerline", h_x_centerline, h_z_centerline, z_k_centerline, sp.symbols("R_k"))
 
-ekfgen.generate_measurement(
-    "centerline", h_x_centerline, h_z_centerline,
-    z_k_centerline, sp.symbols("R_k"))
-
-# delta is backwards from yaw rate, so negative here
+# Delta is backwards from yaw rate, so negative here
 h_imu = sp.Matrix([-v * delta + o_g])
-h_imu
 
+# Gyro IMU
 g_z = sp.symbols("g_z")
 h_gyro = sp.Matrix([g_z])
 R_gyro = sp.Matrix([0.1])
-ekfgen.generate_measurement(
-    "IMU", h_imu, h_gyro, h_gyro, R_gyro)
+ekfgen.generate_measurement("IMU", h_imu, h_gyro, h_gyro, R_gyro)
 
-
-# generate measurement for encoders
+# Generate measurement for encoders
 METERS_PER_ENCODER_TICK = np.pi * 0.101 / 20
 dsdt, fb_delta = sp.symbols("dsdt fb_delta")
 h_z_encoders = sp.Matrix([dsdt, fb_delta])
-h_x_encoders = sp.Matrix([
-    v / METERS_PER_ENCODER_TICK,
-    srvfb_b + delta * srvfb_a
-])
+h_x_encoders = sp.Matrix([v / METERS_PER_ENCODER_TICK, srvfb_b + delta * srvfb_a])
 R_encoders = sp.Matrix([120, 7])
+ekfgen.generate_measurement("encoders", h_x_encoders, h_z_encoders, h_z_encoders, R_encoders)
 
-ekfgen.generate_measurement(
-    "encoders", h_x_encoders,
-    h_z_encoders, h_z_encoders, R_encoders)
-
+# Save
 ekfgen.close()
