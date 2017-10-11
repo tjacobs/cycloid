@@ -175,7 +175,7 @@ def centerline_derivation():
     # Make the symbols
     a, b, c, yc, t = sp.symbols("a b c y_c t", real=True)
 
-    # Z is the processed from camera measurement
+    # Z is the processed values from camera measurement
     z_k = sp.Matrix([a, b, c, yc])
 
     # And yc is the center of the original datapoints, where our regression should
